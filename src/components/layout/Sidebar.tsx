@@ -1,32 +1,20 @@
 import { NavLink } from "react-router-dom";
 import {
-  LayoutGrid,
-  Bike,
-  Images,
-  GalleryHorizontal,
-  Users,
-  ShieldCheck,
-  Settings,
-  ChevronsLeft,
-  ChevronsRight,
-  LogOut,
+  LayoutGrid, Bike, Images,
+  ShoppingCart, MessageSquare, CalendarDays,
+  Settings, ChevronsLeft, ChevronsRight, LogOut,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
   { to: "/inventory", label: "Inventory", icon: Bike },
-  { to: "/media", label: "Media Library", icon: Images },
-  { to: "/gallery", label: "Gallery", icon: GalleryHorizontal },
-  { to: "/leads", label: "Leads", icon: Users },
-  { to: "/users", label: "Staff & Users", icon: ShieldCheck },
+  { to: "/gallery", label: "Gallery", icon: Images },
+  { to: "/sell-enquiry", label: "Sell Enquiry", icon: ShoppingCart },
+  { to: "/customer-enquiry", label: "Customer Enquiry", icon: MessageSquare },
+  { to: "/calendar", label: "Calendar", icon: CalendarDays },
 ];
 
 interface SidebarProps {
@@ -42,10 +30,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile }: Side
   return (
     <>
       {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm lg:hidden"
-          onClick={onCloseMobile}
-        />
+        <div className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm lg:hidden" onClick={onCloseMobile} />
       )}
       <aside
         className={cn(
@@ -54,7 +39,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile }: Side
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        {/* brand */}
+        {/* Brand */}
         <div className={cn("flex items-center gap-3 px-5 py-6", collapsed && "justify-center px-0")}>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-lime font-display text-base font-bold text-lime-ink">
             K7
@@ -121,10 +106,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile }: Side
           <NavLink
             to="/profile"
             onClick={onCloseMobile}
-            className={cn(
-              "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-white/5",
-              collapsed && "justify-center"
-            )}
+            className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-white/5", collapsed && "justify-center")}
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">
               {user ? initials(user.name) : "?"}

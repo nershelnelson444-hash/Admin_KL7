@@ -1,5 +1,65 @@
 export type Showroom = "Ernakulam" | "Aluva";
 
+// ─── Sell Enquiry (from "Sell Your Bike" form on main site) ──────────────────
+export type SellBikeType = "Sport" | "Naked" | "Adventure" | "Cruiser" | "Scooter" | "Classic" | "Off-Road" | "Other";
+export type SellCondition = "New" | "Like New" | "Good" | "Fair";
+export type PreferredContact = "WhatsApp" | "Phone Call" | "Email";
+export type SellEnquiryStatus = "new" | "contacted" | "appraised" | "deal_closed" | "declined";
+
+export interface SellEnquiry {
+  id: string;
+  // bike details
+  brand: string;
+  model: string;
+  year: number;
+  mileage: number; // km
+  engineCC: number;
+  bikeType: SellBikeType;
+  condition: SellCondition;
+  askingPrice: number; // RM
+  notes: string;
+  // contact
+  fullName: string;
+  phone: string;
+  email: string;
+  preferredContact: PreferredContact;
+  // admin
+  status: SellEnquiryStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Customer Enquiry (from "Contact Us" form on main site) ──────────────────
+export type EnquirySubject =
+  | "General Enquiry"
+  | "Bike Enquiry"
+  | "Sell / Trade-In"
+  | "Financing Options"
+  | "After-Sales Support";
+export type CustomerEnquiryStatus = "new" | "read" | "replied" | "closed";
+
+export interface CustomerEnquiry {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  subject: EnquirySubject;
+  message: string;
+  status: CustomerEnquiryStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Calendar Task (admin-created reminders) ─────────────────────────────────
+export interface CalendarTask {
+  id: string;
+  date: string; // ISO yyyy-mm-dd
+  title: string;
+  description?: string;
+  color: string; // CSS color
+  createdAt: string;
+}
+
 export type BikeStatus = "available" | "reserved" | "sold" | "draft";
 export type BikeCondition = "Excellent" | "Good" | "Fair";
 export type FuelType = "Petrol" | "Electric";
