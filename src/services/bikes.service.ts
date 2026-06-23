@@ -1,5 +1,6 @@
-import { apiClient, USE_MOCK_API } from "@/api/client";
+import { USE_MOCK_API } from "@/api/client";
 import { mockDb, networkDelay, newId } from "@/api/mockDb";
+import { supabase } from "@/config/SupabaseClient";
 import type { Bike, BikeStatus, Showroom } from "@/types";
 
 export interface BikeFilters {
@@ -11,6 +12,23 @@ export interface BikeFilters {
 }
 
 export type BikeInput = Omit<Bike, "id" | "createdAt" | "updatedAt" | "views" | "enquiries">;
+
+// ─── Snake-case / camel-case helpers for Supabase ──────────────────────────
+function toCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k.replace(/_([a-z])/g, (_, c) => c.toUpperCase())] = v;
+  }
+  return out;
+}
+
+function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)] = v;
+  }
+  return out;
+}
 
 function applyFilters(bikes: Bike[], filters: BikeFilters = {}): Bike[] {
   let result = [...bikes];
@@ -55,8 +73,23 @@ export const bikesService = {
       await networkDelay();
       return applyFilters(mockDb.get().bikes, filters);
     }
-    const { data } = await apiClient.get<Bike[]>("/bikes", { params: filters });
-    return data;
+    let query = supabase.from("bikes").select("*");
+    if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
+    if (filters.showroom && filters.showroom !== "all") query = query.eq("showroom", filters.showroom);
+    if (filters.brand && filters.brand !== "all") query = query.eq("brand", filters.brand);
+    if (filters.search) {
+      const q = `%${filters.search.toLowerCase()}%`;
+      query = query.or(`brand.ilike.${q},model.ilike.${q},color.ilike.${q}`);
+    }
+    switch (filters.sort) {
+      case "price-asc": query = query.order("price", { ascending: true }); break;
+      case "price-desc": query = query.order("price", { ascending: false }); break;
+      case "year-desc": query = query.order("year", { ascending: false }); break;
+      default: query = query.order("created_at", { ascending: false });
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []).map((d) => toCamelCase(d as unknown as Record<string, unknown>)) as unknown as Bike[];
   },
 
   async get(id: string): Promise<Bike | undefined> {
@@ -64,8 +97,9 @@ export const bikesService = {
       await networkDelay(150, 350);
       return mockDb.get().bikes.find((b) => b.id === id);
     }
-    const { data } = await apiClient.get<Bike>(`/bikes/${id}`);
-    return data;
+    const { data, error } = await supabase.from("bikes").select("*").eq("id", id).single();
+    if (error) throw error;
+    return toCamelCase(data as unknown as Record<string, unknown>) as unknown as Bike;
   },
 
   async create(input: BikeInput): Promise<Bike> {
@@ -82,8 +116,13 @@ export const bikesService = {
       mockDb.update((d) => d.bikes.unshift(bike));
       return bike;
     }
-    const { data } = await apiClient.post<Bike>("/bikes", input);
-    return data;
+    const { data, error } = await supabase
+      .from("bikes")
+      .insert(toSnakeCase(input as unknown as Record<string, unknown>) as never)
+      .select()
+      .single();
+    if (error) throw error;
+    return toCamelCase(data as unknown as Record<string, unknown>) as unknown as Bike;
   },
 
   async update(id: string, input: Partial<BikeInput>): Promise<Bike> {
@@ -100,8 +139,14 @@ export const bikesService = {
       if (!updated) throw new Error("Bike not found");
       return updated;
     }
-    const { data } = await apiClient.patch<Bike>(`/bikes/${id}`, input);
-    return data;
+    const { data, error } = await supabase
+      .from("bikes")
+      .update({ ...toSnakeCase(input as unknown as Record<string, unknown>), updated_at: new Date().toISOString() } as never)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return toCamelCase(data as unknown as Record<string, unknown>) as unknown as Bike;
   },
 
   async remove(id: string): Promise<void> {
@@ -112,7 +157,8 @@ export const bikesService = {
       });
       return;
     }
-    await apiClient.delete(`/bikes/${id}`);
+    const { error } = await supabase.from("bikes").delete().eq("id", id);
+    if (error) throw error;
   },
 
   async updateStatus(id: string, status: BikeStatus): Promise<Bike> {
@@ -124,7 +170,8 @@ export const bikesService = {
       await networkDelay(100, 200);
       return Array.from(new Set(mockDb.get().bikes.map((b) => b.brand))).sort();
     }
-    const { data } = await apiClient.get<string[]>("/bikes/brands");
-    return data;
+    const { data, error } = await supabase.from("bikes").select("brand");
+    if (error) throw error;
+    return Array.from(new Set((data ?? []).map((b: unknown) => (b as Record<string, string>).brand))).sort();
   },
 };

@@ -93,7 +93,15 @@ export interface Bike {
   featured: boolean;
   images: string[];
   description: string;
+  vehicleOverview?: string;
   specs: BikeSpecs;
+  drivetrain?: string;
+  exterior?: string;
+  interior?: string;
+  bodyType?: string;
+  referenceNumber?: string;
+  vin?: string;
+  keyFeatures?: { value: string }[];
   createdAt: string;
   updatedAt: string;
   views: number;

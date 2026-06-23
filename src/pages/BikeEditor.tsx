@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, Save, Plus, Trash2, Upload, X, ImagePlus } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, Upload, X, ImagePlus, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +13,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { supabase, supabaseUrl } from "@/config/SupabaseClient";
 import { useBike, useCreateBike, useUpdateBike } from "@/hooks/useBikes";
 import type { BikeInput } from "@/services/bikes.service";
 
+const STORAGE_BUCKET = "bike-images";
+
+// ─── Schema ───────────────────────────────────────────────────────────────────
 const bikeSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
@@ -36,7 +40,6 @@ const bikeSchema = z.object({
   description: z.string().min(10, "Description too short"),
   vehicleOverview: z.string().optional(),
   images: z.array(z.string()).default([]),
-  // extended spec fields
   specs: z.object({
     engine: z.string().min(1, "Engine spec required"),
     power: z.string().min(1),
@@ -57,20 +60,24 @@ type BikeFormValues = z.infer<typeof bikeSchema>;
 
 const BRANDS = ["Royal Enfield","KTM","Bajaj","Yamaha","Honda","TVS","Suzuki","Jawa","Triumph","Kawasaki","Harley-Davidson","Hero","BMW","Ducati","Husqvarna"];
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function BikeEditor() {
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [newFeature, setNewFeature] = useState("");
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: bike, isLoading } = useBike(id);
   const createBike = useCreateBike();
   const updateBike = useUpdateBike();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors, isSubmitting } } =
     useForm<BikeFormValues>({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       resolver: zodResolver(bikeSchema) as any,
       defaultValues: {
         status: "draft", showroom: "Ernakulam", condition: "Good", fuelType: "Petrol",
@@ -89,8 +96,24 @@ export default function BikeEditor() {
     if (bike) reset(bike as unknown as BikeFormValues);
   }, [bike, reset]);
 
+  // ─── Submit: sends all form data to Supabase `bikes` table ────────────────
   const onSubmit = async (values: BikeFormValues) => {
     const input = values as unknown as BikeInput;
+
+    // Clean up removed images from Supabase Storage (edit mode only)
+    if (isEdit && id && bike) {
+      const oldUrls = bike.images ?? [];
+      const newUrls = values.images ?? [];
+      const removed = oldUrls.filter((u) => !newUrls.includes(u));
+      const storageUrlPrefix = `${supabaseUrl}/storage/v1/object/public/${STORAGE_BUCKET}/`;
+      for (const url of removed) {
+        if (url.startsWith(storageUrlPrefix)) {
+          const filePath = url.slice(storageUrlPrefix.length);
+          await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
+        }
+      }
+    }
+
     if (isEdit && id) {
       await updateBike.mutateAsync({ id, input });
     } else {
@@ -99,6 +122,7 @@ export default function BikeEditor() {
     navigate("/inventory");
   };
 
+  // ─── Add image by URL ──────────────────────────────────────────────────────
   const addImage = () => {
     const url = imageUrlInput.trim();
     if (!url) return;
@@ -110,6 +134,47 @@ export default function BikeEditor() {
     setValue("images", (images ?? []).filter((_, i) => i !== idx));
   };
 
+  // ─── Upload image files to Supabase Storage ────────────────────────────────
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    setUploadingImages(true);
+    setUploadError(null);
+
+    const uploadedUrls: string[] = [];
+
+    for (const file of files) {
+      // Unique filename: timestamp + random suffix + original name
+      const ext = file.name.split(".").pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const filePath = `bikes/${fileName}`;
+
+      const { error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+      if (error) {
+        setUploadError(`Failed to upload ${file.name}: ${error.message}`);
+        setUploadingImages(false);
+        return;
+      }
+
+      // Get the public URL for the uploaded file
+      const { data: urlData } = supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(filePath);
+
+      uploadedUrls.push(urlData.publicUrl);
+    }
+
+    setValue("images", [...(images ?? []), ...uploadedUrls]);
+    setUploadingImages(false);
+    // Reset the file input so the same file can be re-selected if needed
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // ─── Key Features ──────────────────────────────────────────────────────────
   const addFeature = () => {
     const f = newFeature.trim();
     if (!f) return;
@@ -327,6 +392,48 @@ export default function BikeEditor() {
                     ))}
                   </div>
                 )}
+
+                {/* ── File upload (Supabase Storage) ── */}
+                <div>
+                  <label
+                    htmlFor="bike-image-upload"
+                    className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line bg-canvas p-6 text-center transition-colors hover:border-ink hover:bg-canvas-dim ${uploadingImages ? "pointer-events-none opacity-60" : ""}`}
+                  >
+                    {uploadingImages ? (
+                      <>
+                        <Loader2 className="h-6 w-6 animate-spin text-muted" />
+                        <span className="text-sm text-muted">Uploading…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-6 w-6 text-muted" />
+                        <span className="text-sm font-medium text-ink">Click to upload photos</span>
+                        <span className="text-xs text-muted">JPG, PNG, WEBP — multiple files supported</span>
+                      </>
+                    )}
+                  </label>
+                  <input
+                    id="bike-image-upload"
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    disabled={uploadingImages}
+                  />
+                </div>
+
+                {uploadError && (
+                  <p className="text-xs text-danger">{uploadError}</p>
+                )}
+
+                {/* ── OR paste image URL ── */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 border-t border-line" />
+                  <span className="text-xs text-muted">or paste a URL</span>
+                  <div className="flex-1 border-t border-line" />
+                </div>
                 <div className="flex gap-2">
                   <Input
                     value={imageUrlInput}
@@ -408,7 +515,7 @@ export default function BikeEditor() {
               </CardContent>
             </Card>
 
-            <Button type="submit" variant="accent" size="lg" className="w-full" disabled={isSubmitting}>
+            <Button type="submit" variant="accent" size="lg" className="w-full" disabled={isSubmitting || uploadingImages}>
               <Save className="h-4 w-4" />
               {isSubmitting ? "Saving…" : isEdit ? "Save Changes" : "Add to Inventory"}
             </Button>
